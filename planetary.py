@@ -11,6 +11,20 @@ from mpl_toolkits.mplot3d import *  # for 3d plots: comment out if plots not nee
 	Integration of the planetary model for nanoparticles
         Original code by: Nicola Manini of Universita degli studi di Milano
         Subsequent development by: Michael Plesser
+
+        ### UNITS ###
+        ## fundamental units:
+        ##       length: micrometer (microm) = 1e-6 m
+        ##       mass            :  zepto kg (zkg) = 1e-21 kg
+        ##       time            :  microseconds (micros) = 1e-6 s
+        ##       charge          :  elem. charge q_e, but not really used
+        ##       couplingconstant:  q_e^2/(4 pi epsilon_0) is the only 
+        ##                            quantity relevant for Coulomb interactions
+        ##
+        ## derived units:
+        ##       energy: zJ = zkg*microm^2/micros^2 = 1e-21 J
+        ##       force:  fN = zkg*microm/micros^2 = 1e-15 N
+
 """
 
 
@@ -38,11 +52,11 @@ def normsquared(vec):
 def derivs(t, y):           # Here is all the physics: the left side of the equation
     global collision
     neq   = len(y)
-    nhalf = neq/2
-    npart = nhalf/dim
-    deriv = np.zeros(neq)     # Just to create & initialize the output array
-    deriv[:nhalf] = y[nhalf:] # The second half of y is the velocities:
-                            #  they go to the first half of the derivs, to map Newton equation to 1st order
+    nhalf = neq//2
+    npart = nhalf//dim
+    deriv = np.zeros(neq)       # Just to create & initialize the output array
+    deriv[:nhalf] = y[nhalf:]   # The second half of y is the velocities:
+                                #  they go to the first half of the derivs, to map Newton equation to 1st order
                             
 # viscous force (UNREALISTIC, DA RIVEDERE!):
     for i in range(npart):
@@ -70,7 +84,8 @@ def derivs(t, y):           # Here is all the physics: the left side of the equa
             r3=r2*rmod
             if collision[2]==0 and rmod < radii[i]+radii[j]:
                 collision=t,i,j
-                print >> sys.stderr, "collision found between particles {0} and {1} at time {2:.4f}".format(i, j, t)
+                print("\n")
+                print("Collision found between particles {0} and {1} at time {2:.4f}".format(i, j, t), file=sys.stderr)
             force=rvec
             force*=couplingconstant*charges[i]*charges[j]/r3
             deriv[inmin:inmax]+=force/masses[i]
@@ -79,8 +94,8 @@ def derivs(t, y):           # Here is all the physics: the left side of the equa
     return deriv
 
 def cmprops(y):
-    nhalf=len(y)/2
-    npart = nhalf/dim
+    nhalf=len(y)//2
+    npart = nhalf//dim
     xcm=[0.]*dim
     vcm=[0.]*dim
     for i in range(npart):
@@ -94,9 +109,9 @@ def cmprops(y):
     return xcm,vcm
 
 
-def energies(t, y): # used for checking conservations:
-    nhalf = len(y)/2  # offset to reach the velocities
-    npart = nhalf/dim
+def energies(t, y):     # used for checking conservations:
+    nhalf = len(y)//2   # offset to reach the velocities
+    npart = nhalf//dim
 
     totkinen=0.
     for i in range(npart):
@@ -125,7 +140,7 @@ def energies(t, y): # used for checking conservations:
 
 
 def kinen(i, y): # the single-particle kinetic energy
-    nhalf=len(y)/2   # offset to reach the velocities
+    nhalf=len(y)//2   # offset to reach the velocities
 
     inmin=nhalf+i*dim
     inmax=inmin+dim
@@ -135,13 +150,14 @@ def kinen(i, y): # the single-particle kinetic energy
 
 def poten(i, y): # evaluate the electric potential energy of particle i
                  # due to the interaction with all other charged particles
-    nhalf = len(y)/2
-    npart = nhalf/dim
+    nhalf = len(y)//2
+    npart = nhalf//dim
     inmin=i*dim
     inmax=inmin+dim
     ri=y[inmin:inmax]        
     pote=0.
-    for j in range(0,i)+range(i+1,npart):
+    for j in range(npart):
+        if i==j: continue
         jnmin=j*dim
         jnmax=jnmin+dim
         rj=y[jnmin:jnmax]
@@ -165,21 +181,8 @@ def wholecalculation(loopnumber):
     label = 'data/nsatellites_{0}__gamma_{1}'.format(args.n, args.g)
     filen = '{0}_loop_number_{1}.xyz'.format(label, loopnumber+1)
 
-    print "# Starting simulation for --- {0}".format(label)
+    print("# Starting simulation for --- {0}".format(label))
 
-### UNITS ###
-## fundamental units:
-##       length: micrometer (microm) = 1e-6 m
-##       mass:   zepto kg (zkg) = 1e-21 kg
-##       time:   microseconds (micros) = 1e-6 s
-##       charge: elem. charge q_e, but not really used, the coupling constant
-##       couplingconstant = q_e^2/(4 pi epsilon_0) is the only needed
-##       quantity relevant for Coulomb interactions
-##
-## derived units:
-##       energy: zJ = zkg*microm^2/micros^2 = 1e-21 J
-##       force:  fN = zkg*microm/micros^2 = 1e-15 N
-#############
 
     fpi3                    = 4*np.pi/3             # Volume coefficient V = (4/3*pi)*r^3
     couplingconstant        = 0.2307077055899593    # in microm^3*zkg/micros^2
@@ -189,7 +192,7 @@ def wholecalculation(loopnumber):
     silvernumberdensity     = 58.5643e9             # atoms microm^-3
     diameterbig             = 0.025                 # in microm
     diametersmall           = 0.0025                # in microm
-    initialdistancespread   = 0.15                 # in microm
+    initialdistancespread   = 0.1                   # in microm
 
     ## Random satellite parameterization. Generate a radius then find the mass associated from density
     def masssmall():
@@ -227,13 +230,13 @@ def wholecalculation(loopnumber):
         with open(restart_file, 'r') as f:  y = np.loadtxt(f)
         nsat_file  = (len(y)/2/dim) - 1
         if args.n != nsat_file:
-            print "ERROR: expected {0} satellites, got initial condition info for {1}!".format(args.n, nsat_file)
-            print "Proceeding with {0} satellites, consider your mistakes!".format(nsat_file)
+            print("ERROR: expected {0} satellites, got initial condition info for {1}!".format(args.n, nsat_file))
+            print("Proceeding with {0} satellites, consider your mistakes!".format(nsat_file))
             args.n = nsat_file
             npart  = nsat_file + 1
     
     neq     = len(y)
-    nhalf   = neq/2
+    nhalf   = neq//2
     yp      = derivs(0.,y)
 
     xcm, vcm                    = cmprops(y)
@@ -250,59 +253,62 @@ def wholecalculation(loopnumber):
     totenlist       = [toten]
     totkinenlist    = [totkinen]
     totpotenlist    = [totpoten]
-    xfull           = [y[:neq/2]]
+    xfull           = [y[:neq//2]]
     kinenv          = np.array([kinen(i, y) for i in range(npart)])
     elpotenv        = np.array([poten(i, y) for i in range(npart)])
 
     np.set_printoptions(precision=5)
     np.set_printoptions(linewidth=9999999999) # prevent newlines in arrays
     
-    if not args.r:  print "## initial condition generated randomly"
-    else:           print "## initial condition read from {0}".format(restart_file)
-    print "## Parameters:"
-    print "#  tot time              : {0} micros".format(args.t)
-    print "#  npart                 : {0} (i.e. 1 heavy + {1} satellites)".format(args.n+1, args.n)
-    print "#  masses                : {0} zkg".format(masses)
-    print "#  charges               : {0} elementary charges".format(charges)
-    print "#  initial temperature   : {0} K (kB*T = {1} zJ)".format(args.t, kB*args.T)
-    print "#  positions             : {0} microm".format(y[:nhalf])
-    print "#  velocities            : {0} microm/micros [= m/s]".format(y[nhalf:])
+    if not args.r:  print("## initial condition generated randomly")
+    else:           print("## initial condition read from {0}".format(restart_file))
+    print("\n")
+    print("## Parameters:")
+    print("#  tot time              : {0} micros".format(args.t))
+    print("#  npart                 : {0} (i.e. 1 heavy + {1} satellites)".format(args.n+1, args.n))
+    print("#  masses                : {0} zkg".format(masses))
+    print("#  charges               : {0} elementary charges".format(charges))
+    print("#  initial temperature   : {0} K (kB*T = {1} zJ)".format(args.t, kB*args.T))
+    print("#  positions             : {0} microm".format(y[:nhalf]))
+    print("#  velocities            : {0} microm/micros [= m/s]".format(y[nhalf:]))
 
     np.set_printoptions(precision=6)
-    print "## Energy info:"
-    print "#  total energy          : {0} zJ".format(toten)
-    print "#  total kinetic energy  : {0} zJ".format(totkinen)
-    print "#  total potential energy: {0} zJ".format(totpoten)
-    print "#  com position          : {0} microm".format(xcm)
-    print "#  com velocity          : {0} m/s".format(vcm)
-    print "#  kinetic   energies    : {0} zJ".format(kinenv)
-    print "#  potential energies    : {0}".format(elpotenv)
+    print("## Energy info:")
+    print("#  total energy          : {0} zJ".format(toten))
+    print("#  total kinetic energy  : {0} zJ".format(totkinen))
+    print("#  total potential energy: {0} zJ".format(totpoten))
+    print("#  com position          : {0} microm".format(xcm))
+    print("#  com velocity          : {0} m/s".format(vcm))
+    print("#  kinetic   energies    : {0} zJ".format(kinenv))
+    print("#  potential energies    : {0}".format(elpotenv))
+    print("\n")
     
     fil   = open(filen, 'w')
     nstep = int(round(1.*args.t/args.dt))
     for it in range(nstep):
-        print "Simulating time step {0}/{1}".format(it+1, nstep)
+        print
+        print("Simulating time step {0}/{1}".format(it+1, nstep), end='\r')
         ti = it*args.dt
         tf = (it+1)*args.dt
         tlist.append(tf)
         y, yp, t, flag = r8_rkf45( derivs, neq, y, yp, ti, tf, relerr, abserr, flag )
         if flag!=2:
-            print "Warning! flag = {0}.... trying to keep on going".format(flag)
+            print("Warning! flag = {0}.... trying to keep on going".format(flag))
             flag=2
 
 
         if collision[2]==0:
-            print >> fil, npart
-            print >> fil, "#time:",tf
+            print(npart, end="", file=fil)
+            print("#time: "+str(tf), end="", file=fil)
             for i in range(npart):
                 if i==0:    name="O"
                 else:       name="H"
-                print >> fil, name, "".join(" "+str(l) for l in y[dim*i:dim*i+dim])
+                print(name+"".join(" "+str(l) for l in y[dim*i:dim*i+dim]), end="", file=fil)
 
             xcm, vcm = cmprops(y)
             xcmlist.append(xcm)
             vcmlist.append(vcm)
-            xfull.append(y[:neq/2])
+            xfull.append(y[:neq//2])
 
             toten, totkinen, totpoten = energies(t,y)
             totenlist.append(toten)
@@ -324,8 +330,8 @@ def wholecalculation(loopnumber):
             y=np.delete(y,range(nhalf+jnmin,nhalf+jnmax))
             y=np.delete(y,range(jnmin,jnmax))
             neq=len(y)
-            nhalf=neq/2
-            npart=nhalf/dim  # should give the same as npart-1
+            nhalf=neq//2
+            npart=nhalf//dim  # should give the same as npart-1
             y[inmin:inmax]=(masses[i]*ri+masses[j]*rj)/(masses[i]+masses[j])
             vi=y[nhalf+inmin:nhalf+inmax]=(masses[i]*vi+masses[j]*vj)/(masses[i]+masses[j])
             masses[i]=masses[i]+masses[j]
@@ -337,7 +343,8 @@ def wholecalculation(loopnumber):
             collision=0.,0,0
             it=it-1
 
-            print >>sys.stderr,"Restarting simulation at {0:.4f} with {1} satellites remaining".format(restarttime[0], npart-1)
+            print("Restarting simulation at {0:.4f} with {1} satellites remaining".format(restarttime[0], npart-1), file=sys.stderr)
+            print("\n")
             plot_tracks(xfull)
 
 
@@ -350,18 +357,20 @@ def wholecalculation(loopnumber):
     energylists = [totenlist, totkinenlist, totpotenlist] 
     ycmlists    = [vcmlist, xcmlist]
 
-    print "## End of the simulation"
+    print("\n")
+    print("## End of the simulation")
     np.set_printoptions(precision=3)
-    print "#  positions             : {0}".format(y[:nhalf])
-    print "#  velocities            : {0}".format(y[nhalf:])
+    print("#  positions             : {0}".format(y[:nhalf]))
+    print("#  velocities            : {0}".format(y[nhalf:]))
     np.set_printoptions(precision=6)
-    print "#  energy total          : {0} zJ".format(toten)
-    print "#  energy kinetic        : {0} zJ".format(totkinen)
-    print "#  energy potential      : {0} zJ".format(totpoten)
-    print "#  cm position           : {0} microm".format(xcm)
-    print "#  cm velocity           : {0} m/s".format(vcm)
-    print "#  ind kinetic energies  : {0} zJ".format(kinenv)
-    print "#  ind potential energies: {0} zJ".format(elpotenv)
+    print("#  energy total          : {0} zJ".format(toten))
+    print("#  energy kinetic        : {0} zJ".format(totkinen))
+    print("#  energy potential      : {0} zJ".format(totpoten))
+    print("#  cm position           : {0} microm".format(xcm))
+    print("#  cm velocity           : {0} m/s".format(vcm))
+    print("#  ind kinetic energies  : {0} zJ".format(kinenv))
+    print("#  ind potential energies: {0} zJ".format(elpotenv))
+    print("\n")
 
     fil = open("data/final_config.dat", 'w')
     np.savetxt(fil, y)
@@ -378,11 +387,11 @@ def plot_tracks(xfull):
                 d.append(xfull[i][j])
             datapl.append(d)
         i=len(xfull)-1
-        endpoints=np.array(xfull[i]).reshape(len(xfull[-1])/dim,dim).transpose()
+        endpoints=np.array(xfull[i]).reshape(len(xfull[-1])//dim,dim).transpose()
         fig = matplotlib.pyplot.figure()
         ax = fig.gca(projection='3d')
         ax = fig.add_subplot(111, projection='3d')
-        for i in range(len(xfull[-1])/dim):
+        for i in range(len(xfull[-1])//dim):
             ax.plot(datapl[i*dim],datapl[i*dim+1],datapl[i*dim+2], label='p'+str(i))
         ax.scatter(endpoints[0],endpoints[1],endpoints[2],label="end")
         ax.legend()
