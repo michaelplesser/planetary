@@ -45,10 +45,6 @@ def input_args():
 
     return args
 
-
-def normsquared(vec):
-    return np.inner(vec,vec)
-    
 def derivs(t, y):           # Here is all the physics: the left side of the equation
     global collision
     neq   = len(y)
@@ -58,54 +54,54 @@ def derivs(t, y):           # Here is all the physics: the left side of the equa
     deriv[:nhalf] = y[nhalf:]   # The second half of y is the velocities:
                                 #  they go to the first half of the derivs, to map Newton equation to 1st order
                             
-# viscous force (UNREALISTIC, DA RIVEDERE!):
+    ## Viscous force (UNREALISTIC, DA RIVEDERE!):
+    ## (But not too big a deal if gamma (args.g) is 0 or small-ish...)
     for i in range(npart):
-        inmin=nhalf+i*dim
-        inmax=inmin+dim
-        deriv[inmin:inmax]=-args.g*np.array(y[inmin:inmax])
+        inmin = nhalf + i*dim
+        inmax = inmin + dim
+        deriv[inmin:inmax] = -args.g*np.array(y[inmin:inmax])
 
     for i in range(npart):
-        inmin=i*dim
-        inmax=inmin+dim
-        ri=y[inmin:inmax]
-        inmin+=nhalf
-        inmax+=nhalf
+        inmin   = i*dim
+        inmax   = inmin+dim
+        ri      = y[inmin:inmax]
+        inmin  += nhalf
+        inmax  += nhalf
 
         for j in range(i+1,npart):
-            jnmin=j*dim
-            jnmax=jnmin+dim
-            rj=y[jnmin:jnmax]
-            jnmin+=nhalf
-            jnmax+=nhalf
+            jnmin   = j*dim
+            jnmax   = jnmin+dim
+            rj      = y[jnmin:jnmax]
+            jnmin  += nhalf
+            jnmax  += nhalf
 
-            rvec=np.subtract(ri,rj)  # the vector joining ri to rj
-            r2=normsquared(rvec)
-            rmod=math.sqrt(r2)
-            r3=r2*rmod
+            rvec    = np.subtract(ri,rj)  # the vector joining ri to rj
+            r2      = np.inner(rvec, rvec)
+            rmod    = math.sqrt(r2)
+            r3      = r2*rmod
             if collision[2]==0 and rmod < radii[i]+radii[j]:
-                collision=t,i,j
+                collision = t,i,j
                 print("\n")
-                print("Collision found between particles {0} and {1} at time {2:.4f}".format(i, j, t), file=sys.stderr)
-            force=rvec
-            force*=couplingconstant*charges[i]*charges[j]/r3
-            deriv[inmin:inmax]+=force/masses[i]
-            deriv[jnmin:jnmax]+=-force/masses[j]
+                print("Collision found between particles {0} and {1} at time {2:.4f}".format(i, j, t))
+            force   = rvec
+            force  *= couplingconstant*charges[i]*charges[j]/r3
+            deriv[inmin:inmax] +=  force/masses[i]
+            deriv[jnmin:jnmax] += -force/masses[j]
 
     return deriv
 
 def cmprops(y):
-    nhalf=len(y)//2
+    nhalf = len(y)//2
     npart = nhalf//dim
-    xcm=[0.]*dim
-    vcm=[0.]*dim
+    xcm   = [0.]*dim
+    vcm   = [0.]*dim
     for i in range(npart):
-        pp=np.multiply(masses[i],y[dim*i:dim*i+dim])
-        xcm=np.add(xcm,pp)
-    xcm/=np.sum(masses)
-    for i in range(npart):
-        pp=np.multiply(masses[i],y[nhalf+dim*i:nhalf+dim*i+dim])
-        vcm=np.add(vcm,pp)
-    vcm/=np.sum(masses)
+        pp_x  = np.multiply(masses[i], y[dim*i:dim*i+dim])
+        pp_v  = np.multiply(masses[i], y[nhalf+dim*i:nhalf+dim*i+dim])
+        xcm   = np.add(xcm, pp_x)
+        vcm   = np.add(vcm, pp_v)
+    xcm /= np.sum(masses)
+    vcm /= np.sum(masses)
     return xcm,vcm
 
 
@@ -113,57 +109,60 @@ def energies(t, y):     # used for checking conservations:
     nhalf = len(y)//2   # offset to reach the velocities
     npart = nhalf//dim
 
-    totkinen=0.
+    totkinen = 0.
+    totpoten = 0.
     for i in range(npart):
-        inmin=nhalf+i*dim
-        inmax=inmin+dim
-        vi=y[inmin:inmax]
-        totkinen+=masses[i]*normsquared(vi)
-    totkinen*=0.5
-
-    totpoten=0.
-    for i in range(npart):
-        inmin=i*dim
-        inmax=inmin+dim
-        ri=y[inmin:inmax]        
+        
+        ## Kinetic energy calculation
+        k_inmin     = nhalf+i*dim
+        k_inmax     = k_inmin+dim
+        vi          = y[k_inmin:k_inmax]
+        totkinen   += masses[i]*np.inner(vi, vi)
+        
+        ## Potential energy calculation
+        p_inmin = i*dim
+        p_inmax = p_inmin+dim
+        ri      = y[p_inmin:p_inmax]        
         for j in range(i+1,npart):
-            jnmin=j*dim
-            jnmax=jnmin+dim
-            rj=y[jnmin:jnmax]
-            rvec=np.subtract(ri,rj)  # the vector joining ri to rj
-            r1=np.linalg.norm(rvec)
-            totpoten+=couplingconstant*charges[i]*charges[j]/r1
+            p_jnmin   = j*dim
+            p_jnmax   = p_jnmin+dim
+            rj        = y[p_jnmin:p_jnmax]
+            rvec      = np.subtract(ri,rj)  # the vector joining ri to rj
+            r1        = np.linalg.norm(rvec)
+            totpoten += couplingconstant*charges[i]*charges[j]/r1
 
-    toten=totkinen+totpoten
+    totkinen *= 0.5
+    toten     = totkinen + totpoten
             
-    return toten,totkinen,totpoten
+    return toten, totkinen, totpoten
 
 
 def kinen(i, y): # the single-particle kinetic energy
-    nhalf=len(y)//2   # offset to reach the velocities
+    
+    nhalf = len(y)//2   # offset to reach the velocities
 
-    inmin=nhalf+i*dim
-    inmax=inmin+dim
-    vi=y[inmin:inmax]
-    return 0.5*masses[i]*normsquared(vi)
+    inmin = nhalf+i*dim
+    inmax = inmin+dim
+    vi    = y[inmin:inmax]
+    return 0.5*masses[i]*np.inner(vi, vi)
 
 
 def poten(i, y): # evaluate the electric potential energy of particle i
                  # due to the interaction with all other charged particles
     nhalf = len(y)//2
     npart = nhalf//dim
-    inmin=i*dim
-    inmax=inmin+dim
-    ri=y[inmin:inmax]        
-    pote=0.
+    inmin = i*dim
+    inmax = inmin+dim
+    ri    = y[inmin:inmax]        
+    pote  = 0.
     for j in range(npart):
         if i==j: continue
-        jnmin=j*dim
-        jnmax=jnmin+dim
-        rj=y[jnmin:jnmax]
-        rvec=np.subtract(ri,rj)  # the vector joining ri to rj
-        r1=np.linalg.norm(rvec)
-        pote+=couplingconstant*charges[i]*charges[j]/r1
+        jnmin = j*dim
+        jnmax = jnmin+dim
+        rj    = y[jnmin:jnmax]
+        rvec  = np.subtract(ri,rj)  # the vector joining ri to rj
+        r1    = np.linalg.norm(rvec)
+        pote += couplingconstant*charges[i]*charges[j]/r1
             
     return pote
 
@@ -175,13 +174,14 @@ def wholecalculation(loopnumber):
     global couplingconstant, charges, masses, radii
     global collision
 
-    npart = args.n+1
-    collision=0.,0,0
+    npart     = args.n+1
+    collision = 0.,0,0
 
     label = 'data/nsatellites_{0}__gamma_{1}'.format(args.n, args.g)
     filen = '{0}_loop_number_{1}.xyz'.format(label, loopnumber+1)
 
-    print("# Starting simulation for --- {0}".format(label))
+    print('\n')
+    print("### Starting simulation for --- {0}".format(label))
 
 
     fpi3                    = 4*np.pi/3             # Volume coefficient V = (4/3*pi)*r^3
@@ -260,15 +260,15 @@ def wholecalculation(loopnumber):
     np.set_printoptions(precision=5)
     np.set_printoptions(linewidth=9999999999) # prevent newlines in arrays
     
-    if not args.r:  print("## initial condition generated randomly")
-    else:           print("## initial condition read from {0}".format(restart_file))
+    if not args.r:  print("### initial condition generated randomly")
+    else:           print("### initial condition read from {0}".format(restart_file))
     print("\n")
     print("## Parameters:")
     print("#  tot time              : {0} micros".format(args.t))
     print("#  npart                 : {0} (i.e. 1 heavy + {1} satellites)".format(args.n+1, args.n))
     print("#  masses                : {0} zkg".format(masses))
     print("#  charges               : {0} elementary charges".format(charges))
-    print("#  initial temperature   : {0} K (kB*T = {1} zJ)".format(args.t, kB*args.T))
+    print("#  initial temperature   : {0} K (kB*T = {1} zJ)".format(args.T, kB*args.T))
     print("#  positions             : {0} microm".format(y[:nhalf]))
     print("#  velocities            : {0} microm/micros [= m/s]".format(y[nhalf:]))
 
@@ -283,14 +283,19 @@ def wholecalculation(loopnumber):
     print("#  potential energies    : {0}".format(elpotenv))
     print("\n")
     
+    restarttime = 0., 0
     fil   = open(filen, 'w')
     nstep = int(round(1.*args.t/args.dt))
     for it in range(nstep):
-        print
-        print("Simulating time step {0}/{1}".format(it+1, nstep), end='\r')
-        ti = it*args.dt
         tf = (it+1)*args.dt
-        tlist.append(tf)
+        if restarttime[1] == 0:
+            print("Simulating time step {0}/{1}".format(it+1, nstep), end='\r')
+            ti = it*args.dt
+            tlist.append(tf)
+        else:
+            ti=restarttime[0]
+            restarttime=0.,0
+
         y, yp, t, flag = r8_rkf45( derivs, neq, y, yp, ti, tf, relerr, abserr, flag )
         if flag!=2:
             print("Warning! flag = {0}.... trying to keep on going".format(flag))
@@ -316,38 +321,42 @@ def wholecalculation(loopnumber):
             totpotenlist.append(totpoten)
 
         else:
-            i=collision[1]
-            inmin=i*dim
-            inmax=inmin+dim
-            ri=np.array(y[inmin:inmax])
-            vi=np.array(y[nhalf+inmin:nhalf+inmax])
-            j=collision[2]
-            jnmin=j*dim
-            jnmax=jnmin+dim
-            rj=np.array(y[jnmin:jnmax])
-            vj=np.array(y[nhalf+jnmin:nhalf+jnmax])
+            i     = collision[1]
+            j     = collision[2]
+            inmin = i*dim
+            jnmin = j*dim
+            inmax = inmin+dim
+            jnmax = jnmin+dim
+            ri    = np.array(y[inmin:inmax])
+            rj    = np.array(y[jnmin:jnmax])
+            vi    = np.array(y[nhalf+inmin:nhalf+inmax])
+            vj    = np.array(y[nhalf+jnmin:nhalf+jnmax])
 
-            y=np.delete(y,range(nhalf+jnmin,nhalf+jnmax))
-            y=np.delete(y,range(jnmin,jnmax))
-            neq=len(y)
-            nhalf=neq//2
-            npart=nhalf//dim  # should give the same as npart-1
-            y[inmin:inmax]=(masses[i]*ri+masses[j]*rj)/(masses[i]+masses[j])
-            vi=y[nhalf+inmin:nhalf+inmax]=(masses[i]*vi+masses[j]*vj)/(masses[i]+masses[j])
-            masses[i]=masses[i]+masses[j]
-            charges[i]=charges[i]+charges[j]
-            masses=np.delete(masses,j)
-            charges=np.delete(charges,j)
-            yp=derivs(collision[0],y)
-            restarttime=collision[0],1
-            collision=0.,0,0
-            it=it-1
+            y     = np.delete(y,range(nhalf+jnmin,nhalf+jnmax))
+            y     = np.delete(y,range(jnmin,jnmax))
+            
+            neq             = len(y)
+            nhalf           = neq//2
+            npart           = nhalf//dim
+            y[inmin:inmax]  = (masses[i]*ri+masses[j]*rj)/(masses[i]+masses[j])
+            vi              = y[nhalf+inmin:nhalf+inmax]=(masses[i]*vi+masses[j]*vj)/(masses[i]+masses[j])
+            masses[i]       = masses[i]+masses[j]
+            charges[i]      = charges[i]+charges[j]
+            
+            masses          = np.delete(masses,j)
+            charges         = np.delete(charges,j)
+            
+            yp              = derivs(collision[0],y)
+            restarttime     = collision[0],1
+            collision       = 0., 0, 0
+            it              = it-1
 
-            print("Restarting simulation at {0:.4f} with {1} satellites remaining".format(restarttime[0], npart-1), file=sys.stderr)
-            print("\n")
-            plot_tracks(xfull)
+            if not args.np: plot_tracks(xfull)
+            print("Restarting simulation at {0:.4f} with {1} satellites remaining".format(restarttime[0], npart-1))
+            print('\n')
 
-
+            xfull = [ np.concatenate([x[:jnmin], x[jnmax:]]) for x in xfull]    # Remove previous position data on collided satellite
+                                                                                # Otherwise plot_tracks gets confused :(
 
     fil.close()
     y = np.array(y)
@@ -379,18 +388,19 @@ def wholecalculation(loopnumber):
     return tlist, xfull, ycmlists, energylists
 
 
+## Currently plot_tracks only supports dim==3. Generalization TBD
 def plot_tracks(xfull):
-        datapl=[]
+        datapl = []
         for j in range(len(xfull[-1])):
-            d=[]
+            d  = []
             for i in range(len(xfull)):
                 d.append(xfull[i][j])
             datapl.append(d)
-        i=len(xfull)-1
-        endpoints=np.array(xfull[i]).reshape(len(xfull[-1])//dim,dim).transpose()
-        fig = matplotlib.pyplot.figure()
-        ax = fig.gca(projection='3d')
-        ax = fig.add_subplot(111, projection='3d')
+        i         = len(xfull)-1
+        endpoints = np.array(xfull[i]).reshape(len(xfull[-1])//dim,dim).transpose()
+        fig       = matplotlib.pyplot.figure()
+        ax        = fig.gca(projection='3d')
+        ax        = fig.add_subplot(111, projection='3d')
         for i in range(len(xfull[-1])//dim):
             ax.plot(datapl[i*dim],datapl[i*dim+1],datapl[i*dim+2], label='p'+str(i))
         ax.scatter(endpoints[0],endpoints[1],endpoints[2],label="end")
@@ -407,7 +417,7 @@ def main():
     global args # Simulation arguments
     global collision
 
-    dim  = 3     
+    dim  = 3
     args = input_args()
 
     if args.dt<=0 or args.T<=0 or args.n<=0: sys.exit("Hey, something is funny in your options! Goon...")
@@ -416,7 +426,7 @@ def main():
     np.set_printoptions(suppress=True)
 
     npart = args.n+1
-    nhalf = 3*args.n
+    nhalf = args.n*dim
     for loopn in range(args.l):
         tlist, xfull, ycm, energylists = wholecalculation(loopn)
         vcmlist   = ycm[:nhalf]
@@ -425,30 +435,32 @@ def main():
         kinenlist = energylists[1]
         potenlist = energylists[2]
 
-# This graphics part below here is entirely optional.
-# It may be worth commenting it out if you are unwilling to install/use
-#    matplotlib
-# 3D trajectories:
+        ## This graphics below are entirely optional
+        ## Comment it out if you don't want plots / to use matplotlib
         if not args.np:
            plot_tracks(xfull) 
+
+            ## Energy conservation plots, not too interesting except as a conservation check...
             
-     #    figure( 1 )
+            ## Figure( 1 )
             #subplot( 4, 1, 1 )
             #plot( tlist, xcmlist, 'b-x')
             #ylabel( '$x_{cm}\ [\mu$m]' )
             #title( 'check conservation laws for $'+str(npart-1)+'$ satellites, $\gamma='+str(args.g)+'$')
             #legend( ( "xyz" ), loc='upper left' )
 
-     #    figure( 2 )
+            ## Figure( 2 )
             #subplot( 4, 1, 2 )
             #plot( tlist, vcmlist, 'b-o')
             #ylabel( '$v_{cm}$ [m/s]' )
             #legend( ( 'xyz' ), loc='upper right' )
-     #    figure( 3 )
+            
+            ## Figure( 3 )
             #subplot( 4, 1, 3 )
             #plot( tlist, totenlist, 'b-o')
             #ylabel( 'tot energy [zJ]' )
-     #    figure( 4 )
+     
+            ## Figure( 4 )
             #subplot( 4, 1, 4 )
             #plot( tlist,totkinenlist, 'r-s', tlist,totpotenlist, 'g-x')
             #xlabel( '$t\ [\mu$s]' )
@@ -456,8 +468,6 @@ def main():
             #ylabel( 'energies [zJ]' )
 
             #show()
-
-
 
 if __name__ == "__main__":
     main()
