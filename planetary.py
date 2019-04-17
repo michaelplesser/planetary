@@ -29,6 +29,7 @@ from mpl_toolkits.mplot3d import *  # for 3d plots: comment out if plots not nee
 
 
 def input_args():
+
     parser = argparse.ArgumentParser(description="")
 
     parser.add_argument('-d',   action='store_true',                            help='Enter debug mode')
@@ -43,24 +44,31 @@ def input_args():
 
     args = parser.parse_args()
 
+    ## Just a few misc. checks. You need a positive, non-zero time-step, temperature, and number of satellites, etc
+    if args.dt<=0 or args.t<=args.dt or args.T<=0 or args.n<=0: sys.exit("Hey, something is funny in your options! Goon...")
+
     return args
 
-def derivs(t, y):           # Here is all the physics: the left side of the equation
+## Does the physics, differential equations, F=ma, etc, etc
+def derivs(t, y):   
+
     global collision
+
     neq   = len(y)
-    nhalf = neq//2
-    npart = nhalf//dim
-    deriv = np.zeros(neq)       # Just to create & initialize the output array
+    nhalf = neq   // 2
+    npart = nhalf // dim
+    deriv = np.zeros(neq)       
     deriv[:nhalf] = y[nhalf:]   # The second half of y is the velocities:
                                 #  they go to the first half of the derivs, to map Newton equation to 1st order
                             
-    ## Viscous force (UNREALISTIC, DA RIVEDERE!):
+    ## Viscous force (damping) (UNREALISTIC, DA RIVEDERE!):
     ## (But not too big a deal if gamma (args.g) is 0 or small-ish...)
     for i in range(npart):
         inmin = nhalf + i*dim
         inmax = inmin + dim
-        deriv[inmin:inmax] = -args.g*np.array(y[inmin:inmax])
+        deriv[inmin:inmax] = -args.g * np.array(y[inmin:inmax]) # Diff. eq is dv/dt = -gamma*v, standard drag
 
+    ## Coulomb forces
     for i in range(npart):
         inmin   = i*dim
         inmax   = inmin+dim
@@ -68,9 +76,9 @@ def derivs(t, y):           # Here is all the physics: the left side of the equa
         inmin  += nhalf
         inmax  += nhalf
 
-        for j in range(i+1,npart):
-            jnmin   = j*dim
-            jnmax   = jnmin+dim
+        for j in range(i+1, npart):
+            jnmin   = j * dim
+            jnmax   = jnmin + dim
             rj      = y[jnmin:jnmax]
             jnmin  += nhalf
             jnmax  += nhalf
@@ -78,103 +86,106 @@ def derivs(t, y):           # Here is all the physics: the left side of the equa
             rvec    = np.subtract(ri,rj)  # the vector joining ri to rj
             r2      = np.inner(rvec, rvec)
             rmod    = math.sqrt(r2)
-            r3      = r2*rmod
+            r3      = r2 * rmod
             if collision[2]==0 and rmod < radii[i]+radii[j]:
                 collision = t,i,j
                 print("\n")
                 print("Collision found between particles {0} and {1} at time {2:.4f}".format(i, j, t))
             force   = rvec
-            force  *= couplingconstant*charges[i]*charges[j]/r3
-            deriv[inmin:inmax] +=  force/masses[i]
-            deriv[jnmin:jnmax] += -force/masses[j]
+            force  *= couplingconstant * charges[i] * charges[j] / r3
+            deriv[inmin:inmax] +=  force / masses[i]
+            deriv[jnmin:jnmax] += -force / masses[j]
 
     return deriv
 
+## Center of Mass properies, find the center of mass position and velocity 
 def cmprops(y):
-    nhalf = len(y)//2
-    npart = nhalf//dim
-    xcm   = [0.]*dim
-    vcm   = [0.]*dim
+
+    nhalf = len(y) // 2
+    npart = nhalf  // dim
+    xcm   = [0.] * dim
+    vcm   = [0.] * dim
     for i in range(npart):
-        pp_x  = np.multiply(masses[i], y[dim*i:dim*i+dim])
-        pp_v  = np.multiply(masses[i], y[nhalf+dim*i:nhalf+dim*i+dim])
+        pp_x  = np.multiply(masses[i], y[        dim*i:        dim*i+dim])
+        pp_v  = np.multiply(masses[i], y[nhalf + dim*i:nhalf + dim*i+dim])
         xcm   = np.add(xcm, pp_x)
         vcm   = np.add(vcm, pp_v)
     xcm /= np.sum(masses)
     vcm /= np.sum(masses)
+
     return xcm,vcm
 
+## Calculate energies of the system
+def energies(t, y):         # used for checking conservations:
 
-def energies(t, y):     # used for checking conservations:
-    nhalf = len(y)//2   # offset to reach the velocities
-    npart = nhalf//dim
+    nhalf = len(y) // 2     # offset to reach the velocities
+    npart = nhalf  // dim
 
     totkinen = 0.
     totpoten = 0.
     for i in range(npart):
         
         ## Kinetic energy calculation
-        k_inmin     = nhalf+i*dim
-        k_inmax     = k_inmin+dim
+        k_inmin     = nhalf   + i*dim
+        k_inmax     = k_inmin +   dim
         vi          = y[k_inmin:k_inmax]
-        totkinen   += masses[i]*np.inner(vi, vi)
+        totkinen   += masses[i] * np.inner(vi, vi)
         
         ## Potential energy calculation
-        p_inmin = i*dim
-        p_inmax = p_inmin+dim
+        p_inmin = i * dim
+        p_inmax = p_inmin + dim
         ri      = y[p_inmin:p_inmax]        
         for j in range(i+1,npart):
-            p_jnmin   = j*dim
-            p_jnmax   = p_jnmin+dim
+            p_jnmin   = j * dim
+            p_jnmax   = p_jnmin + dim
             rj        = y[p_jnmin:p_jnmax]
             rvec      = np.subtract(ri,rj)  # the vector joining ri to rj
             r1        = np.linalg.norm(rvec)
-            totpoten += couplingconstant*charges[i]*charges[j]/r1
+            totpoten += couplingconstant * charges[i] * charges[j] / r1
 
     totkinen *= 0.5
     toten     = totkinen + totpoten
             
     return toten, totkinen, totpoten
 
-
-def kinen(i, y): # the single-particle kinetic energy
+## Calculate the kinetic energy of a single particle
+def kinen(i, y):        
     
-    nhalf = len(y)//2   # offset to reach the velocities
+    nhalf = len(y) // 2 # Offset to reach the velocities
 
-    inmin = nhalf+i*dim
-    inmax = inmin+dim
+    inmin = nhalf + i*dim
+    inmax = inmin +   dim
     vi    = y[inmin:inmax]
-    return 0.5*masses[i]*np.inner(vi, vi)
+
+    return 0.5 * masses[i] * np.inner(vi, vi)
 
 
-def poten(i, y): # evaluate the electric potential energy of particle i
-                 # due to the interaction with all other charged particles
-    nhalf = len(y)//2
-    npart = nhalf//dim
-    inmin = i*dim
-    inmax = inmin+dim
+def poten(i, y):        # Evaluate the electric potential energy of particle i
+                        # due to the interaction with all other charged particles
+    nhalf = len(y) // 2
+    npart = nhalf  // dim
+    inmin = i * dim
+    inmax = inmin + dim
     ri    = y[inmin:inmax]        
     pote  = 0.
     for j in range(npart):
-        if i==j: continue
-        jnmin = j*dim
-        jnmax = jnmin+dim
+        if i == j: continue         # Don't try to calculate self-energy... I ain't no Schwinger!
+        jnmin = j * dim
+        jnmax = jnmin + dim
         rj    = y[jnmin:jnmax]
         rvec  = np.subtract(ri,rj)  # the vector joining ri to rj
         r1    = np.linalg.norm(rvec)
-        pote += couplingconstant*charges[i]*charges[j]/r1
+        pote += couplingconstant * charges[i] * charges[j] / r1
             
     return pote
 
-
-# here is the actual code which runs an entire simulation:
-def wholecalculation(loopnumber):
+def simulate_that_ish(loopnumber):
 
     global args
     global couplingconstant, charges, masses, radii
     global collision
 
-    npart     = args.n+1
+    npart     = args.n + 1
     collision = 0.,0,0
 
     label = 'data/nsatellites_{0}__gamma_{1}'.format(args.n, args.g)
@@ -183,7 +194,6 @@ def wholecalculation(loopnumber):
     print('\n')
     print("### Starting simulation for --- {0}".format(label))
 
-
     fpi3                    = 4*np.pi/3             # Volume coefficient V = (4/3*pi)*r^3
     couplingconstant        = 0.2307077055899593    # in microm^3*zkg/micros^2
     kB                      = 1.38064852e-2         # in zJ/K
@@ -191,24 +201,27 @@ def wholecalculation(loopnumber):
     silvermass              = 107.8682*amu
     silvernumberdensity     = 58.5643e9             # atoms microm^-3
     diameterbig             = 0.025                 # in microm
-    diametersmall           = 0.0025                # in microm
     initialdistancespread   = 0.1                   # in microm
 
     ## Random satellite parameterization. Generate a radius then find the mass associated from density
+    ## Requires a diameter above a threshold, IE 0. But it's good to use something like 0.001 for physicality
+    sat_diameters = []
     def masssmall():
         diametersmall = 0
-        while diametersmall<=0.001:  diametersmall = np.random.normal(0.0025, 0.002)
-        return fpi3*math.pow(diametersmall/2,3)*silvernumberdensity*silvermass
+        while diametersmall<=0.001:  diametersmall = np.random.normal(0.0025, 0.002)   
+        sat_diameters.append(diametersmall)
+        return fpi3 * math.pow(diametersmall/2,3) * silvernumberdensity * silvermass
 
-    radii       = [diameterbig/2]+[diametersmall/2]*args.n
-    massbig     = fpi3*math.pow(diameterbig  /2,3)*silvernumberdensity*silvermass
-    masses      = np.array([massbig]+[masssmall() for i in range(args.n)]) # Using randomized satellite masses
+    massbig     = fpi3 * math.pow(diameterbig/2,3) * silvernumberdensity * silvermass
+    masses      = np.array([massbig] + [masssmall() for i       in range(args.n)])      # Using randomized satellite masses
+    radii       = [diameterbig/2]    + [d_small/2   for d_small in sat_diameters]
 
     q0          = 1.                    # Satellite charge magnitude
-    charges     = [3*q0]+[-q0]*args.n   # Satellites are NEGATIVELY charged
+    charges     = [3*q0] + [-q0]*args.n # Satellites are NEGATIVELY charged
 
-### End of preliminary setting up stuff ###
+    ## End of preliminary, setting up stuff
 
+    ## Generate initial conditions
 
     restart_file = 'data/start_config.dat'
     if not args.r:         
@@ -217,7 +230,6 @@ def wholecalculation(loopnumber):
         v0          = np.zeros(dim*npart)	                                        # Initial velocities                    
         x0[dim:]    = np.random.normal(0.0, initialdistancespread, dim*(npart-1))       # Set satellite initial positions 
         v0[dim:]    = np.random.normal(0.0, kB*args.T/masssmall(), dim*(npart-1))       # Set satellite initial velocities
-        
 
         ## Generate initial conditions for the central particle
         #for i in range(dim):            # Set the speed of the heavy particle
@@ -247,6 +259,7 @@ def wholecalculation(loopnumber):
     abserr  = 1.e-14
     flag    = 1
 
+    ## Initialize the various data arrays that will be used
     tlist           = [0]
     xcmlist         = [xcm]
     vcmlist         = [vcm]
@@ -271,7 +284,6 @@ def wholecalculation(loopnumber):
     print("#  initial temperature   : {0} K (kB*T = {1} zJ)".format(args.T, kB*args.T))
     print("#  positions             : {0} microm".format(y[:nhalf]))
     print("#  velocities            : {0} microm/micros [= m/s]".format(y[nhalf:]))
-
     np.set_printoptions(precision=6)
     print("## Energy info:")
     print("#  total energy          : {0} zJ".format(toten))
@@ -283,7 +295,8 @@ def wholecalculation(loopnumber):
     print("#  potential energies    : {0}".format(elpotenv))
     print("\n")
     
-    restarttime = 0., 0
+    restarttime = 0., 0     # For a satellite collision, we merge particles and restart at the collision time
+                            # Tuple has form <restart_time>,<restart_flag>, Flag==0 means no restart, ==1 means restart!
     fil   = open(filen, 'w')
     nstep = int(round(1.*args.t/args.dt))
     for it in range(nstep):
@@ -420,15 +433,13 @@ def main():
     dim  = 3
     args = input_args()
 
-    if args.dt<=0 or args.T<=0 or args.n<=0: sys.exit("Hey, something is funny in your options! Goon...")
-
     np.set_printoptions(precision=5)
     np.set_printoptions(suppress=True)
 
     npart = args.n+1
     nhalf = args.n*dim
     for loopn in range(args.l):
-        tlist, xfull, ycm, energylists = wholecalculation(loopn)
+        tlist, xfull, ycm, energylists = simulate_that_ish(loopn)
         vcmlist   = ycm[:nhalf]
         xcmlist   = ycm[nhalf:]
         totenlist = energylists[0]
